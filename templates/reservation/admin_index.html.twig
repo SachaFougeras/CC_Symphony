@@ -1,0 +1,47 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Liste des réservations{% endblock %}
+
+{% block body %}
+<h1>Liste des réservations</h1>
+
+<table class="table table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>ID</th>
+            <th>Client</th>
+            <th>Chambre</th>
+            <th>Date de début</th>
+            <th>Date de fin</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+   <tbody>
+    {% for reservation in reservations %}
+        <tr>
+            <td>{{ reservation.id }}</td>
+<td>
+    {% if reservation.client is not null %}
+        {{ reservation.client.nom }}
+    {% else %}
+        <em>Client supprimé</em>
+    {% endif %}
+</td>
+            <td>{{ reservation.chambre.numero }}</td>
+            <td>{{ reservation.dateDebut|date('d/m/Y') }}</td>
+            <td>{{ reservation.dateFin|date('d/m/Y') }}</td>
+            <td>
+                <form method="post" action="{{ path('reservation_delete', { id: reservation.id }) }}" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette réservation ?');">
+                    <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ reservation.id) }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                </form>
+            </td>
+        </tr>
+    {% else %}
+        <tr>
+            <td colspan="6">Aucune réservation trouvée.</td>
+        </tr>
+    {% endfor %}
+</tbody>
+</table>
+{% endblock %}
