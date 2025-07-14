@@ -13,106 +13,169 @@ use App\Document\Comment;
 #[Route('/chambre')]
 class ChambreController extends AbstractController
 {
+    /**
+     * Ajoute une nouvelle chambre à un hôtel donné.
+     * Vérifie l'existence de l'hôtel et l'unicité du numéro de chambre pour cet hôtel.
+     */
     #[Route('/{hotelId}/new', name: 'chambre_new', methods: ['GET', 'POST'])]
-    public function addChambre(string $id, Request $request, DocumentManager $dm): Response
+    public function addChambre(string $hotelId, Request $request, DocumentManager $dm): Response
     {
-        $hotel = $dm->getRepository(Hotel::class)->find($id);
-    
-        if (!$hotel) {
-            throw $this->createNotFoundException('Hôtel non trouvé.');
+        try {
+            // Recherche de l'hôtel par son identifiant
+            $hotel = $dm->getRepository(Hotel::class)->find($hotelId);
+
+            if (!$hotel) {
+                // Si l'hôtel n'existe pas, on lève une exception 404
+                throw $this->createNotFoundException('Hôtel non trouvé.');
+            }
+
+            if ($request->isMethod('POST')) {
+                $numero = $request->request->get('numero');
+
+                // Vérifie que le numéro de chambre est renseigné
+                if (empty($numero)) {
+                    $this->addFlash('error', 'Le numéro de chambre est obligatoire.');
+                    return $this->render('chambre/chambre_new.html.twig', [
+                        'hotel' => $hotel,
+                    ]);
+                }
+
+                // Vérifie l'unicité du numéro de chambre pour cet hôtel
+                $existingChambre = $dm->getRepository(Chambre::class)->findOneBy([
+                    'hotel' => $hotel,
+                    'numero' => $numero,
+                ]);
+
+                if ($existingChambre) {
+                    $this->addFlash('error', 'Une chambre avec ce numéro existe déjà pour cet hôtel.');
+                    return $this->render('chambre/chambre_new.html.twig', [
+                        'hotel' => $hotel,
+                    ]);
+                }
+
+                // Création et sauvegarde de la nouvelle chambre
+                $chambre = new Chambre();
+                $chambre->setNumero($numero);
+                $chambre->setType($request->request->get('type'));
+                $chambre->setPrix($request->request->get('prix'));
+                $chambre->setCapacite((int) $request->request->get('capacite'));
+                $chambre->setHotel($hotel);
+
+                $dm->persist($chambre);
+                $dm->flush();
+
+                // Redirection vers la page de l'hôtel après ajout
+                return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
+            }
+
+            // Affiche le formulaire d'ajout si ce n'est pas un POST
+            return $this->render('chambre/chambre_new.html.twig', [
+                'hotel' => $hotel,
+            ]);
+        } catch (\Exception $e) {
+            // Gestion des erreurs inattendues
+            $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
+            return $this->redirectToRoute('home');
         }
-    
-        $numero = $request->request->get('numero');
-    
-        // Vérifiez si une chambre avec le même numéro existe déjà pour cet hôtel
-        $existingChambre = $dm->getRepository(Chambre::class)->findOneBy([
-            'hotel' => $hotel,
-            'numero' => $numero,
-        ]);
-    
-        if ($existingChambre) {
-            $this->addFlash('error', 'Une chambre avec ce numéro existe déjà pour cet hôtel.');
-            return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
-        }
-    
-        $chambre = new Chambre();
-        $chambre->setNumero($numero);
-        $chambre->setType($request->request->get('type'));
-        $chambre->setPrix($request->request->get('prix'));
-        $chambre->setCapacite((int) $request->request->get('capacite'));
-        $chambre->setHotel($hotel);
-    
-        $dm->persist($chambre);
-        $dm->flush();
-    
-        return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
     }
 
+    /**
+     * Modifie une chambre existante.
+     * Vérifie l'unicité du numéro de chambre pour l'hôtel lors de la modification.
+     */
     #[Route('/{id}/edit', name: 'chambre_edit', methods: ['GET', 'POST'])]
     public function editChambre(string $id, Request $request, DocumentManager $dm): Response
     {
-        $chambre = $dm->getRepository(Chambre::class)->find($id);
-    
-        if (!$chambre) {
-            throw $this->createNotFoundException('Chambre non trouvée.');
-        }
-    
-        if ($request->isMethod('POST')) {
-            $numero = $request->request->get('numero');
-            $hotel = $chambre->getHotel();
-    
-            // Vérifiez si une autre chambre avec le même numéro existe pour cet hôtel
-            $existingChambre = $dm->getRepository(Chambre::class)->findOneBy([
-                'hotel' => $hotel,
-                'numero' => $numero,
-            ]);
-    
-            if ($existingChambre && $existingChambre->getId() !== $chambre->getId()) {
-                $this->addFlash('error', 'Une chambre avec ce numéro existe déjà pour cet hôtel.');
-                return $this->redirectToRoute('chambre_edit', ['id' => $chambre->getId()]);
+        try {
+            // Recherche de la chambre à modifier
+            $chambre = $dm->getRepository(Chambre::class)->find($id);
+
+            if (!$chambre) {
+                throw $this->createNotFoundException('Chambre non trouvée.');
             }
-    
-            $chambre->setNumero($numero);
-            $chambre->setType($request->request->get('type'));
-            $chambre->setPrix($request->request->get('prix'));
-            $chambre->setCapacite((int) $request->request->get('capacite'));
-    
-            $dm->flush();
-    
-            return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
+
+            if ($request->isMethod('POST')) {
+                $numero = $request->request->get('numero');
+                $hotel = $chambre->getHotel();
+
+                // Vérifie l'unicité du numéro de chambre (hors la chambre courante)
+                $existingChambre = $dm->getRepository(Chambre::class)->findOneBy([
+                    'hotel' => $hotel,
+                    'numero' => $numero,
+                ]);
+
+                if ($existingChambre && $existingChambre->getId() !== $chambre->getId()) {
+                    $this->addFlash('error', 'Une chambre avec ce numéro existe déjà pour cet hôtel.');
+                    return $this->redirectToRoute('chambre_edit', ['id' => $chambre->getId()]);
+                }
+
+                // Mise à jour des informations de la chambre
+                $chambre->setNumero($numero);
+                $chambre->setType($request->request->get('type'));
+                $chambre->setPrix($request->request->get('prix'));
+                $chambre->setCapacite((int) $request->request->get('capacite'));
+
+                $dm->flush();
+
+                // Redirection vers la page de l'hôtel après modification
+                return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
+            }
+
+            // Affiche le formulaire de modification
+            return $this->render('chambre/chambre_edit.html.twig', [
+                'chambre' => $chambre,
+            ]);
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
+            return $this->redirectToRoute('home');
         }
-    
-        return $this->render('chambre/edit.html.twig', [
-            'chambre' => $chambre,
-        ]);
-    
-    }
-#[Route('/chambre/{id}/comments', name: 'chambre_comments', methods: ['GET'])]
-public function comments(string $id, DocumentManager $dm): Response
-{
-    $chambre = $dm->getRepository(Chambre::class)->find($id);
-
-    if (!$chambre) {
-        throw $this->createNotFoundException('Chambre non trouvée.');
     }
 
-    $comments = $dm->getRepository(Comment::class)->findBy(['chambre' => $chambre]);
+    /**
+     * Affiche les commentaires d'une chambre.
+     */
+    #[Route('/chambre/{id}/comments', name: 'chambre_comments', methods: ['GET'])]
+    public function comments(string $id, DocumentManager $dm): Response
+    {
+        try {
+            $chambre = $dm->getRepository(Chambre::class)->find($id);
 
-    return $this->render('chambre/comments.html.twig', [
-        'chambre' => $chambre,
-        'comments' => $comments,
-    ]);
-}
+            if (!$chambre) {
+                throw $this->createNotFoundException('Chambre non trouvée.');
+            }
+
+            $comments = $dm->getRepository(Comment::class)->findBy(['chambre' => $chambre]);
+
+            return $this->render('chambre/chambre_comments.html.twig', [
+                'chambre' => $chambre,
+                'comments' => $comments,
+            ]);
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
+            return $this->redirectToRoute('home');
+        }
+    }
+
+    /**
+     * Supprime une chambre.
+     */
     #[Route('/{id}/delete', name: 'chambre_delete', methods: ['POST'])]
     public function delete(string $id, DocumentManager $dm): Response
     {
-        $chambre = $dm->getRepository(Chambre::class)->find($id);
+        try {
+            $chambre = $dm->getRepository(Chambre::class)->find($id);
 
-        if ($chambre) {
-            $dm->remove($chambre);
-            $dm->flush();
+            if ($chambre) {
+                $hotelId = $chambre->getHotel()->getId();
+                $dm->remove($chambre);
+                $dm->flush();
+                return $this->redirectToRoute('hotel_show', ['id' => $hotelId]);
+            } else {
+                throw $this->createNotFoundException('Chambre non trouvée.');
+            }
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
+            return $this->redirectToRoute('home');
         }
-
-        return $this->redirectToRoute('hotel_show', ['id' => $chambre->getHotel()->getId()]);
     }
 }
