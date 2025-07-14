@@ -10,11 +10,14 @@
         <a href="{{ path('hotel_new') }}" class="btn btn-success">Ajouter un hôtel</a>
     </div>
 {% endif %}
-<form method="get" action="{{ path('hotel_search') }}" class="mb-4">
-    <div class="input-group">
-        <input type="text" name="q" class="form-control" placeholder="Rechercher un hôtel par nom ou ville" value="{{ query|default('') }}">
-        <button type="submit" class="btn btn-primary">Rechercher</button>
-    </div>
+<form method="get" action="{{ path('hotel_search') }}">
+    <input list="hotel-noms" name="q" placeholder="Nom de l'hôtel">
+    <datalist id="hotel-noms">
+        {% for nom in noms %}
+            <option value="{{ nom }}">
+        {% endfor %}
+    </datalist>
+    <button type="submit">Rechercher</button>
 </form>
 <div class="row">
     {% for hotel in hotels %}

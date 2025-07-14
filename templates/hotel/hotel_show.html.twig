@@ -36,31 +36,29 @@
                 <td>{{ chambre.numero }}</td>
                 <td>{{ chambre.type }}</td>
                 <td>{{ chambre.prix }} €</td>
-                 <td>{{ chambre.capacite }} lit(s)</td>
-                 
-<td>
-    {% if app.user and 'ROLE_ADMIN' in app.user.roles %}
-        <a href="{{ path('chambre_comments', { id: chambre.id }) }}" class="btn btn-info btn-sm">Voir les commentaires</a>
-        <a href="{{ path('chambre_edit', { id: chambre.id }) }}" class="btn btn-warning btn-sm">Modifier</a>
-        <form method="post" action="{{ path('chambre_delete', { id: chambre.id }) }}" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette chambre ?');">
-            <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ chambre.id) }}">
-            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
-        </form>
-    {% else %}
-        <form method="post" action="{{ path('hotel_reserve', { id: hotel.id }) }}">
-            <input type="hidden" name="chambre_id" value="{{ chambre.id }}">
-            <div class="mb-3">
-                <label for="date_debut_{{ chambre.id }}" class="form-label">Date de début</label>
-                <input type="date" id="date_debut_{{ chambre.id }}" name="date_debut" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label for="date_fin_{{ chambre.id }}" class="form-label">Date de fin</label>
-                <input type="date" id="date_fin_{{ chambre.id }}" name="date_fin" class="form-control" required>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm">Réserver</button>
-        </form>
-    {% endif %}
-</td>
+                <td>{{ chambre.capacite }} lit(s)</td>
+                <td>{% if app.user and 'ROLE_ADMIN' in app.user.roles %}
+                        <a href="{{ path('chambre_comments', { id: chambre.id }) }}" class="btn btn-info btn-sm">Voir les commentaires</a>
+                        <a href="{{ path('chambre_edit', { id: chambre.id }) }}" class="btn btn-warning btn-sm">Modifier</a>
+                        <form method="post" action="{{ path('chambre_delete', { id: chambre.id }) }}" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette chambre ?');">
+                        <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ chambre.id) }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                        </form>
+                    {% else %}
+                        <form method="post" action="{{ path('hotel_reserve', { id: hotel.id }) }}">
+                        <input type="hidden" name="chambre_id" value="{{ chambre.id }}">
+                        <div class="mb-3">
+                            <label for="date_debut_{{ chambre.id }}" class="form-label">Date de début</label>
+                            <input type="date" id="date_debut_{{ chambre.id }}" name="date_debut" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="date_fin_{{ chambre.id }}" class="form-label">Date de fin</label>
+                            <input type="date" id="date_fin_{{ chambre.id }}" name="date_fin" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Réserver</button>
+                        </form>
+                    {% endif %}
+                </td>
             </tr>
         {% else %}
             <tr>
