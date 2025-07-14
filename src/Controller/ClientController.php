@@ -10,10 +10,18 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use App\Document\Reservation;
 
+/**
+ * Contrôleur de gestion des clients.
+ * Permet d'ajouter, modifier, afficher et supprimer des clients.
+ */
 class ClientController extends AbstractController
 {
     /**
      * Affiche la liste des clients, avec possibilité de recherche.
+     *
+     * @param Request $request La requête HTTP
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/clients', name: 'client_index', methods: ['GET'])]
     public function index(Request $request, DocumentManager $dm): Response
@@ -47,6 +55,10 @@ class ClientController extends AbstractController
 
     /**
      * Affiche le détail d'un client et ses réservations.
+     *
+     * @param string $id L'identifiant du client
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/clients/{id}', name: 'client_show', methods: ['GET'])]
     public function show(string $id, DocumentManager $dm): Response
@@ -80,6 +92,11 @@ class ClientController extends AbstractController
     /**
      * Modifie un client existant.
      * Vérifie l'unicité de l'ID auto-incrémenté.
+     *
+     * @param Request $request La requête HTTP
+     * @param Client $client Le client à modifier (injecté automatiquement)
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/client/{id}/edit', name: 'client_edit', methods: ['GET', 'POST'])]
     public function edit(Request $request, Client $client, DocumentManager $dm): Response
@@ -124,6 +141,10 @@ class ClientController extends AbstractController
 
     /**
      * Supprime un client et ses réservations associées.
+     *
+     * @param string $id L'identifiant du client à supprimer
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/clients/{id}/delete', name: 'client_delete', methods: ['POST'])]
     public function delete(string $id, DocumentManager $dm): Response

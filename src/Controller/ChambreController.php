@@ -10,12 +10,21 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use App\Document\Comment;
 
+/**
+ * Contrôleur de gestion des chambres d'hôtel.
+ * Permet d'ajouter, modifier, afficher et supprimer des chambres.
+ */
 #[Route('/chambre')]
 class ChambreController extends AbstractController
 {
     /**
      * Ajoute une nouvelle chambre à un hôtel donné.
      * Vérifie l'existence de l'hôtel et l'unicité du numéro de chambre pour cet hôtel.
+     *
+     * @param string $hotelId L'identifiant de l'hôtel
+     * @param Request $request La requête HTTP
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/{hotelId}/new', name: 'chambre_new', methods: ['GET', 'POST'])]
     public function addChambre(string $hotelId, Request $request, DocumentManager $dm): Response
@@ -82,6 +91,11 @@ class ChambreController extends AbstractController
     /**
      * Modifie une chambre existante.
      * Vérifie l'unicité du numéro de chambre pour l'hôtel lors de la modification.
+     *
+     * @param string $id L'identifiant de la chambre à modifier
+     * @param Request $request La requête HTTP
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/{id}/edit', name: 'chambre_edit', methods: ['GET', 'POST'])]
     public function editChambre(string $id, Request $request, DocumentManager $dm): Response
@@ -126,6 +140,7 @@ class ChambreController extends AbstractController
                 'chambre' => $chambre,
             ]);
         } catch (\Exception $e) {
+            // Gestion des erreurs inattendues
             $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
             return $this->redirectToRoute('home');
         }
@@ -133,24 +148,32 @@ class ChambreController extends AbstractController
 
     /**
      * Affiche les commentaires d'une chambre.
+     *
+     * @param string $id L'identifiant de la chambre
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/chambre/{id}/comments', name: 'chambre_comments', methods: ['GET'])]
     public function comments(string $id, DocumentManager $dm): Response
     {
         try {
+            // Recherche de la chambre
             $chambre = $dm->getRepository(Chambre::class)->find($id);
 
             if (!$chambre) {
                 throw $this->createNotFoundException('Chambre non trouvée.');
             }
 
+            // Récupère les commentaires liés à la chambre
             $comments = $dm->getRepository(Comment::class)->findBy(['chambre' => $chambre]);
 
+            // Affiche la page des commentaires
             return $this->render('chambre/chambre_comments.html.twig', [
                 'chambre' => $chambre,
                 'comments' => $comments,
             ]);
         } catch (\Exception $e) {
+            // Gestion des erreurs inattendues
             $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
             return $this->redirectToRoute('home');
         }
@@ -158,14 +181,20 @@ class ChambreController extends AbstractController
 
     /**
      * Supprime une chambre.
+     *
+     * @param string $id L'identifiant de la chambre à supprimer
+     * @param DocumentManager $dm Le gestionnaire de documents MongoDB
+     * @return Response
      */
     #[Route('/{id}/delete', name: 'chambre_delete', methods: ['POST'])]
     public function delete(string $id, DocumentManager $dm): Response
     {
         try {
+            // Recherche de la chambre à supprimer
             $chambre = $dm->getRepository(Chambre::class)->find($id);
 
             if ($chambre) {
+                // Récupère l'identifiant de l'hôtel pour la redirection
                 $hotelId = $chambre->getHotel()->getId();
                 $dm->remove($chambre);
                 $dm->flush();
@@ -174,6 +203,7 @@ class ChambreController extends AbstractController
                 throw $this->createNotFoundException('Chambre non trouvée.');
             }
         } catch (\Exception $e) {
+            // Gestion des erreurs inattendues
             $this->addFlash('error', 'Une erreur est survenue : ' . $e->getMessage());
             return $this->redirectToRoute('home');
         }

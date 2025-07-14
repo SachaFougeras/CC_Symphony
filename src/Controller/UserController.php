@@ -17,8 +17,15 @@ use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
 use App\Service\SmsService;
 
+/**
+ * Contrôleur de gestion des utilisateurs (clients).
+ * Permet l'inscription, la connexion, la gestion des utilisateurs, la réinitialisation du mot de passe, etc.
+ */
 class UserController extends AbstractController
 {
+    /**
+     * Affiche le formulaire de connexion et gère l'authentification.
+     */
     #[Route('/login', name: 'app_login', methods: ['GET', 'POST'])]
     public function login(AuthenticationUtils $authenticationUtils): Response
     {
@@ -37,15 +44,9 @@ class UserController extends AbstractController
         ]);
     }
 
-
-
-
-
-
-    
-   
-
-
+    /**
+     * Affiche la liste des utilisateurs (clients) pour l'administration.
+     */
     #[Route('/users', name: 'user_management', methods: ['GET'])]
     public function manageUsers(DocumentManager $dm): Response
     {
@@ -57,15 +58,19 @@ class UserController extends AbstractController
         ]);
     }
 
-
+    /**
+     * Déconnecte l'utilisateur.
+     * (La méthode est interceptée par le firewall de Symfony)
+     */
     #[Route('/logout', name: 'app_logout', methods: ['GET'])]
     public function logout(): void
     {
-        // Symfony gère automatiquement la déconnexion
         throw new \LogicException('This method can be blank - it will be intercepted by the logout key on your firewall.');
     }
 
-
+    /**
+     * Gère l'inscription d'un nouvel utilisateur (client).
+     */
     #[Route('/register', name: 'app_register', methods: ['GET', 'POST'])]
     public function register(Request $request, UserPasswordHasherInterface $passwordHasher, DocumentManager $dm): Response
     {
@@ -75,143 +80,155 @@ class UserController extends AbstractController
             $telephone = $request->request->get('telephone');
             $password = $request->request->get('password');
             $confirmPassword = $request->request->get('confirm_password');
-    
+
             // Vérifiez que les mots de passe correspondent
             if ($password !== $confirmPassword) {
                 $this->addFlash('error', 'Les mots de passe ne correspondent pas.');
                 return $this->redirectToRoute('app_register');
             }
-    
+
             // Vérifiez l'unicité de l'email
             $existingEmail = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
             if ($existingEmail) {
                 $this->addFlash('error', 'Cet email est déjà utilisé.');
                 return $this->redirectToRoute('app_register');
             }
-    
-            // Pour verfiez l'unicité du numéro de téléphone
-            $existingTelephone = $dm->getRepository(Client::class)->findOneBy(['telephone' => $telephone]);
 
+            // Vérifiez l'unicité du numéro de téléphone
+            $existingTelephone = $dm->getRepository(Client::class)->findOneBy(['telephone' => $telephone]);
             if ($existingTelephone) {
                 $this->addFlash('error', 'Ce numéro de téléphone est déjà utilisé.');
                 return $this->redirectToRoute('app_register');
             }
-    
+
             // Créez un nouvel utilisateur
             $user = new Client();
             $user->setNom($nom);
             $user->setEmail($email);
             $user->setTelephone($telephone);
             $user->setPassword($passwordHasher->hashPassword($user, $password));
-    
+
             // Définir le rôle par défaut
             $user->setRoles(['ROLE_USER']);
-    
+
             // Générer l'ID auto-incrémenté
             $lastUser = $dm->createQueryBuilder(Client::class)
                 ->sort('autoIncrementId', 'DESC')
                 ->limit(1)
                 ->getQuery()
                 ->getSingleResult();
-    
+
             $nextId = $lastUser ? $lastUser->getAutoIncrementId() + 1 : 1;
             $user->setAutoIncrementId($nextId);
-    
+
             // Persistez l'utilisateur dans la base de données
             $dm->persist($user);
             $dm->flush();
-    
+
             $this->addFlash('success', 'Inscription réussie. Vous pouvez maintenant vous connecter.');
             return $this->redirectToRoute('app_login');
         }
-    
+
         return $this->render('security/register.html.twig');
     }
-#[Route('/forgot-password', name: 'app_forgot_password', methods: ['GET', 'POST'])]
-public function forgotPassword(Request $request, DocumentManager $dm, MessageBusInterface $bus): Response
-{
-    if ($request->isMethod('POST')) {
-        $email = $request->request->get('email');
+
+    /**
+     * Gère la demande de réinitialisation de mot de passe.
+     * Envoie un code de réinitialisation par email.
+     */
+    #[Route('/forgot-password', name: 'app_forgot_password', methods: ['GET', 'POST'])]
+    public function forgotPassword(Request $request, DocumentManager $dm, MessageBusInterface $bus): Response
+    {
+        if ($request->isMethod('POST')) {
+            $email = $request->request->get('email');
+            $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
+
+            if (!$user) {
+                $this->addFlash('error', 'Aucun utilisateur trouvé avec cet email.');
+                return $this->redirectToRoute('app_forgot_password');
+            }
+            // Générer un code à 6 chiffres
+            $code = random_int(100000, 999999);
+            $user->setResetCode((string)$code);
+            $user->setResetRequestedAt(new \DateTime());
+            $dm->flush();
+
+            // Envoyer le code par email via Messenger
+            $bus->dispatch(new SendEmailMessage($email, "Votre code de réinitialisation est : $code"));
+
+            $this->addFlash('success', 'Un code de réinitialisation a été envoyé par email.');
+            // Redirige vers la page de saisie du code
+            return $this->redirectToRoute('app_check_code', ['email' => $email]);
+        }
+
+        return $this->render('security/forgot_password.html.twig');
+    }
+
+    /**
+     * Vérifie le code de réinitialisation envoyé par email.
+     */
+    #[Route('/check-code', name: 'app_check_code', methods: ['GET', 'POST'])]
+    public function checkCode(Request $request, DocumentManager $dm): Response
+    {
+        $email = $request->query->get('email');
+        if ($request->isMethod('POST')) {
+            $code = $request->request->get('code');
+            $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
+
+            if (
+                !$user ||
+                !$user->getResetCode() ||
+                $user->getResetCode() !== $code ||
+                !$user->getResetRequestedAt() ||
+                $user->getResetRequestedAt()->modify('+1 hour') < new \DateTimeImmutable()
+            ) {
+                $this->addFlash('error', 'Code invalide ou expiré.');
+                return $this->redirectToRoute('app_forgot_password');
+            }
+
+            // Stocke l'email en session pour la suite
+            $request->getSession()->set('reset_email', $email);
+
+            // Redirige vers la page de réinitialisation du mot de passe
+            return $this->redirectToRoute('app_reset_password_code');
+        }
+
+        return $this->render('security/check_code.html.twig', ['email' => $email]);
+    }
+
+    /**
+     * Permet à l'utilisateur de saisir un nouveau mot de passe après validation du code.
+     */
+    #[Route('/reset-password-code', name: 'app_reset_password_code', methods: ['GET', 'POST'])]
+    public function resetPasswordCode(
+        Request $request,
+        DocumentManager $dm,
+        UserPasswordHasherInterface $passwordHasher
+    ): Response {
+        $email = $request->getSession()->get('reset_email');
         $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
 
         if (!$user) {
-            $this->addFlash('error', 'Aucun utilisateur trouvé avec cet email.');
-            return $this->redirectToRoute('app_forgot_password');
-        }
-        // Générer un code à 6 chiffres
-        $code = random_int(100000, 999999);
-        $user->setResetCode((string)$code);
-        $user->setResetRequestedAt(new \DateTime());
-        $dm->flush();
-
-        // Envoyer le code par email via Messenger
-        $bus->dispatch(new SendEmailMessage($email, "Votre code de réinitialisation est : $code"));
-
-        $this->addFlash('success', 'Un code de réinitialisation a été envoyé par email.');
-        // Redirige vers la page de saisie du code
-        return $this->redirectToRoute('app_check_code', ['email' => $email]);
-    }
-
-    return $this->render('security/forgot_password.html.twig');
-}
-#[Route('/check-code', name: 'app_check_code', methods: ['GET', 'POST'])]
-public function checkCode(Request $request, DocumentManager $dm): Response
-{
-    $email = $request->query->get('email');
-    if ($request->isMethod('POST')) {
-        $code = $request->request->get('code');
-        $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
-
-        if (
-            !$user ||
-            !$user->getResetCode() ||
-            $user->getResetCode() !== $code ||
-            !$user->getResetRequestedAt() ||
-            $user->getResetRequestedAt()->modify('+1 hour') < new \DateTimeImmutable()
-        ) {
-            $this->addFlash('error', 'Code invalide ou expiré.');
+            $this->addFlash('error', 'Utilisateur introuvable.');
             return $this->redirectToRoute('app_forgot_password');
         }
 
-        // Stocke l'email en session pour la suite
-        $request->getSession()->set('reset_email', $email);
+        if ($request->isMethod('POST')) {
+            $password = $request->request->get('password');
+            $confirmPassword = $request->request->get('confirm_password');
+            if ($password !== $confirmPassword) {
+                $this->addFlash('error', 'Les mots de passe ne correspondent pas.');
+                return $this->redirectToRoute('app_reset_password_code');
+            }
+            $user->setPassword($passwordHasher->hashPassword($user, $password));
+            $user->setResetCode(null);
+            $user->setResetRequestedAt(null);
+            $dm->flush();
 
-        // Redirige vers la page de réinitialisation du mot de passe
-        return $this->redirectToRoute('app_reset_password_code');
-    }
-
-    return $this->render('security/check_code.html.twig', ['email' => $email]);
-}
-#[Route('/reset-password-code', name: 'app_reset_password_code', methods: ['GET', 'POST'])]
-public function resetPasswordCode(
-    Request $request,
-    DocumentManager $dm,
-    UserPasswordHasherInterface $passwordHasher
-): Response {
-    $email = $request->getSession()->get('reset_email');
-    $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
-
-    if (!$user) {
-        $this->addFlash('error', 'Utilisateur introuvable.');
-        return $this->redirectToRoute('app_forgot_password');
-    }
-
-    if ($request->isMethod('POST')) {
-        $password = $request->request->get('password');
-        $confirmPassword = $request->request->get('confirm_password');
-        if ($password !== $confirmPassword) {
-            $this->addFlash('error', 'Les mots de passe ne correspondent pas.');
-            return $this->redirectToRoute('app_reset_password_code');
+            $this->addFlash('success', 'Mot de passe réinitialisé. Vous pouvez vous connecter.');
+            return $this->redirectToRoute('app_login');
         }
-        $user->setPassword($passwordHasher->hashPassword($user, $password));
-        $user->setResetCode(null);
-        $user->setResetRequestedAt(null);
-        $dm->flush();
 
-        $this->addFlash('success', 'Mot de passe réinitialisé. Vous pouvez vous connecter.');
-        return $this->redirectToRoute('app_login');
+        return $this->render('security/reset_password.html.twig');
     }
-
-    return $this->render('security/reset_password.html.twig');
-}
 }
