@@ -10,6 +10,9 @@ use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use App\Message\SendResetPasswordEmail;
+use App\Message\SendEmailMessage;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
 use App\Service\SmsService;
@@ -38,100 +41,10 @@ class UserController extends AbstractController
 
 
 
-    #[Route('/set-pin', name: 'set_pin', methods: ['GET', 'POST'])]
-    public function setPin(Request $request, DocumentManager $dm): Response
-    {
-        $user = $this->getUser();
+
     
-        if (!$user) {
-            $this->addFlash('error', 'Vous devez être connecté pour définir un code PIN.');
-            return $this->redirectToRoute('app_login');
-        }
-    
-        if ($request->isMethod('POST')) {
-            $pinCode = $request->request->get('pinCode');
-    
-            // Vérifiez que le code PIN est un entier à 6 chiffres
-            if (!preg_match('/^\d{6}$/', $pinCode)) {
-                $this->addFlash('error', 'Le code PIN doit être un entier à 6 chiffres.');
-                return $this->redirectToRoute('set_pin');
-            }
-    
-            $user->setPinCode((int) $pinCode);
-            $dm->flush();
-    
-            $this->addFlash('success', 'Code PIN défini avec succès.');
-            return $this->redirectToRoute('home');
-        }
-    
-        return $this->render('security/set_pin.html.twig');
-    }
-    #[Route('/forgot-password-pin', name: 'forgot_password_pin', methods: ['GET', 'POST'])]
-    public function forgotPasswordPin(Request $request, DocumentManager $dm, UserPasswordHasherInterface $passwordHasher): Response
-    {
-        if ($request->isMethod('POST')) {
-            $email = $request->request->get('email');
-            $pinCode = $request->request->get('pinCode');
-            $newPassword = $request->request->get('newPassword');
-    
-            // Récupérer l'utilisateur par email
-            $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
-    
-            if (!$user) {
-                $this->addFlash('error', 'Utilisateur non trouvé.');
-                return $this->redirectToRoute('forgot_password_pin');
-            }
-    
-            // Vérifiez le code PIN
-            if ($user->getPinCode() !== (int) $pinCode) {
-                $this->addFlash('error', 'Code PIN incorrect.');
-                return $this->redirectToRoute('forgot_password_pin');
-            }
-    
-            // Réinitialiser le mot de passe
-            $hashedPassword = $passwordHasher->hashPassword($user, $newPassword);
-            $user->setPassword($hashedPassword);
-            $dm->flush();
-    
-            $this->addFlash('success', 'Mot de passe réinitialisé avec succès.');
-            return $this->redirectToRoute('app_login');
-        }
-    
-        return $this->render('security/forgot_password_pin.html.twig');
-    }
-    #[Route('/reset-password-pin', name: 'reset_password_pin', methods: ['GET', 'POST'])]
-    public function resetPasswordWithPin(Request $request, DocumentManager $dm, UserPasswordHasherInterface $passwordHasher): Response
-    {
-        if ($request->isMethod('POST')) {
-            $email = $request->request->get('email');
-            $pinCode = $request->request->get('pinCode');
-            $newPassword = $request->request->get('newPassword');
-    
-            // Récupérer l'utilisateur par email
-            $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
-    
-            if (!$user) {
-                $this->addFlash('error', 'Utilisateur non trouvé.');
-                return $this->redirectToRoute('reset_password_pin');
-            }
-    
-            // Vérifiez le code PIN
-            if ($user->getPinCode() !== (int) $pinCode) {
-                $this->addFlash('error', 'Code PIN incorrect.');
-                return $this->redirectToRoute('reset_password_pin');
-            }
-    
-            // Réinitialiser le mot de passe
-            $hashedPassword = $passwordHasher->hashPassword($user, $newPassword);
-            $user->setPassword($hashedPassword);
-            $dm->flush();
-    
-            $this->addFlash('success', 'Mot de passe réinitialisé avec succès.');
-            return $this->redirectToRoute('app_login');
-        }
-    
-        return $this->render('security/reset_password_pin.html.twig');
-    }
+   
+
 
     #[Route('/users', name: 'user_management', methods: ['GET'])]
     public function manageUsers(DocumentManager $dm): Response
@@ -176,8 +89,9 @@ class UserController extends AbstractController
                 return $this->redirectToRoute('app_register');
             }
     
-            // Vérifiez l'unicité du numéro de téléphone
+            // Pour verfiez l'unicité du numéro de téléphone
             $existingTelephone = $dm->getRepository(Client::class)->findOneBy(['telephone' => $telephone]);
+
             if ($existingTelephone) {
                 $this->addFlash('error', 'Ce numéro de téléphone est déjà utilisé.');
                 return $this->redirectToRoute('app_register');
@@ -213,4 +127,91 @@ class UserController extends AbstractController
     
         return $this->render('security/register.html.twig');
     }
+#[Route('/forgot-password', name: 'app_forgot_password', methods: ['GET', 'POST'])]
+public function forgotPassword(Request $request, DocumentManager $dm, MessageBusInterface $bus): Response
+{
+    if ($request->isMethod('POST')) {
+        $email = $request->request->get('email');
+        $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
+
+        if (!$user) {
+            $this->addFlash('error', 'Aucun utilisateur trouvé avec cet email.');
+            return $this->redirectToRoute('app_forgot_password');
+        }
+        // Générer un code à 6 chiffres
+        $code = random_int(100000, 999999);
+        $user->setResetCode((string)$code);
+        $user->setResetRequestedAt(new \DateTime());
+        $dm->flush();
+
+        // Envoyer le code par email via Messenger
+        $bus->dispatch(new SendEmailMessage($email, "Votre code de réinitialisation est : $code"));
+
+        $this->addFlash('success', 'Un code de réinitialisation a été envoyé par email.');
+        // Redirige vers la page de saisie du code
+        return $this->redirectToRoute('app_check_code', ['email' => $email]);
+    }
+
+    return $this->render('security/forgot_password.html.twig');
+}
+#[Route('/check-code', name: 'app_check_code', methods: ['GET', 'POST'])]
+public function checkCode(Request $request, DocumentManager $dm): Response
+{
+    $email = $request->query->get('email');
+    if ($request->isMethod('POST')) {
+        $code = $request->request->get('code');
+        $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
+
+        if (
+            !$user ||
+            !$user->getResetCode() ||
+            $user->getResetCode() !== $code ||
+            !$user->getResetRequestedAt() ||
+            $user->getResetRequestedAt()->modify('+1 hour') < new \DateTimeImmutable()
+        ) {
+            $this->addFlash('error', 'Code invalide ou expiré.');
+            return $this->redirectToRoute('app_forgot_password');
+        }
+
+        // Stocke l'email en session pour la suite
+        $request->getSession()->set('reset_email', $email);
+
+        // Redirige vers la page de réinitialisation du mot de passe
+        return $this->redirectToRoute('app_reset_password_code');
+    }
+
+    return $this->render('security/check_code.html.twig', ['email' => $email]);
+}
+#[Route('/reset-password-code', name: 'app_reset_password_code', methods: ['GET', 'POST'])]
+public function resetPasswordCode(
+    Request $request,
+    DocumentManager $dm,
+    UserPasswordHasherInterface $passwordHasher
+): Response {
+    $email = $request->getSession()->get('reset_email');
+    $user = $dm->getRepository(Client::class)->findOneBy(['email' => $email]);
+
+    if (!$user) {
+        $this->addFlash('error', 'Utilisateur introuvable.');
+        return $this->redirectToRoute('app_forgot_password');
+    }
+
+    if ($request->isMethod('POST')) {
+        $password = $request->request->get('password');
+        $confirmPassword = $request->request->get('confirm_password');
+        if ($password !== $confirmPassword) {
+            $this->addFlash('error', 'Les mots de passe ne correspondent pas.');
+            return $this->redirectToRoute('app_reset_password_code');
+        }
+        $user->setPassword($passwordHasher->hashPassword($user, $password));
+        $user->setResetCode(null);
+        $user->setResetRequestedAt(null);
+        $dm->flush();
+
+        $this->addFlash('success', 'Mot de passe réinitialisé. Vous pouvez vous connecter.');
+        return $this->redirectToRoute('app_login');
+    }
+
+    return $this->render('security/reset_password.html.twig');
+}
 }

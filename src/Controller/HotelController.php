@@ -13,14 +13,13 @@ use App\Document\Reservation;
 #[Route('/hotel')]
 class HotelController extends AbstractController
 {
-    #[Route('/accueil', name: 'home', methods: ['GET'])]
-    public function home(Request $request, DocumentManager $dm): Response
-    {
-        $page = max(1, (int) $request->query->get('page', 1)); // Page actuelle (par défaut 1)
-    $limit = 10; // Nombre d'hôtels par page
-    $offset = ($page - 1) * $limit; // Calcul de l'offset
+#[Route('/accueil', name: 'home', methods: ['GET'])]
+public function home(Request $request, DocumentManager $dm): Response
+{
+    $page = max(1, (int) $request->query->get('page', 1));
+    $limit = 10;
+    $offset = ($page - 1) * $limit;
 
-    // Récupérer les hôtels avec pagination
     $repository = $dm->getRepository(Hotel::class);
     $hotels = $repository->findBy([], null, $limit, $offset);
 
@@ -30,12 +29,17 @@ class HotelController extends AbstractController
         ->getQuery()
         ->execute();
 
-        return $this->render('home/index.html.twig', [
-            'hotels' => $hotels,
-            'currentPage' => $page,
-            'totalPages' => $totalHotels,
-        ]);
-    }
+    // Récupérer tous les noms d'hôtels pour le datalist
+    $allHotels = $repository->findAll();
+    $noms = array_map(fn($h) => $h->getNom(), $allHotels);
+
+    return $this->render('home/index.html.twig', [
+        'hotels' => $hotels,
+        'currentPage' => $page,
+        'totalPages' => $totalHotels,
+        'noms' => $noms, 
+    ]);
+}
     // Calculer le nombre total de pages
  
     #[Route('/hotel/{id}/reserve', name: 'hotel_reserve', methods: ['POST'])]
@@ -92,23 +96,40 @@ class HotelController extends AbstractController
         $this->addFlash('success', 'Réservation effectuée avec succès.');
         return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
     }
-    #[Route('/search', name: 'hotel_search', methods: ['GET'])]
-    public function search(Request $request, DocumentManager $dm): Response
-    {
-        $query = $request->query->get('q', '');
-    
-        // Rechercher les hôtels correspondant au nom ou à la ville
-        $qb = $dm->getRepository(Hotel::class)->createQueryBuilder();
-        $qb->addOr($qb->expr()->field('nom')->equals(new \MongoDB\BSON\Regex($query, 'i')))
-           ->addOr($qb->expr()->field('ville')->equals(new \MongoDB\BSON\Regex($query, 'i')));
-    
-        $hotels = $qb->getQuery()->execute();
-    
-        return $this->render('home/index.html.twig', [
-            'hotels' => $hotels,
-            'query' => $query,
-        ]);
-    }
+#[Route('/search', name: 'hotel_search', methods: ['GET'])]
+public function search(Request $request, DocumentManager $dm): Response
+{
+    $query = $request->query->get('q', '');
+
+    // Rechercher les hôtels correspondant au nom ou à la ville
+    $qb = $dm->getRepository(Hotel::class)->createQueryBuilder();
+    $qb->addOr($qb->expr()->field('nom')->equals(new \MongoDB\BSON\Regex($query, 'i')))
+       ->addOr($qb->expr()->field('ville')->equals(new \MongoDB\BSON\Regex($query, 'i')));
+
+    $hotels = $qb->getQuery()->execute();
+
+    // Récupérer tous les noms d'hôtels pour le datalist
+    $allHotels = $dm->getRepository(Hotel::class)->findAll();
+    $noms = array_map(fn($h) => $h->getNom(), $allHotels);
+
+    return $this->render('home/index.html.twig', [
+        'hotels' => $hotels,
+        'query' => $query,
+        'noms' => $noms,
+        'currentPage' => 1,    // <-- Ajoute ceci
+        'totalPages' => 1,     // <-- Et ceci si utilisé dans le template
+]);
+}
+#[Route('/formulaire', name: 'hotel_form', methods: ['GET'])]
+public function form(DocumentManager $dm): Response
+{
+    $hotels = $dm->getRepository(Hotel::class)->findAll();
+    $noms = array_map(fn($h) => $h->getNom(), $hotels);
+
+    return $this->render('hotel/form.html.twig', [
+        'noms' => $noms,
+    ]);
+}
 #[Route('/reservations', name: 'user_reservations', methods: ['GET'])]
 public function userReservations(DocumentManager $dm): Response
 {
@@ -152,7 +173,7 @@ public function userReservations(DocumentManager $dm): Response
             return $this->redirectToRoute('home');
         }
     
-        return $this->render('hotel/new.html.twig');
+        return $this->render('hotel/hotel_new.html.twig');
     }
 
     #[Route('/{id}', name: 'hotel_show', methods: ['GET', 'POST'])]
@@ -178,7 +199,7 @@ public function userReservations(DocumentManager $dm): Response
             return $this->redirectToRoute('hotel_show', ['id' => $hotel->getId()]);
         }
     
-        return $this->render('hotel/show.html.twig', [
+        return $this->render('hotel/hotel_show.html.twig', [
             'hotel' => $hotel,
         ]);
     }
@@ -212,7 +233,7 @@ public function userReservations(DocumentManager $dm): Response
             return $this->redirectToRoute('home');
         }
 
-        return $this->render('hotel/edit.html.twig', [
+        return $this->render('hotel/hotel_edit.html.twig', [
             'hotel' => $hotel,
         ]);
     }

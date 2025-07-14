@@ -42,24 +42,27 @@ class Client implements UserInterface, PasswordAuthenticatedUserInterface
     #[MongoDB\Field(type: "string", nullable: true)]
     private ?string $resetCode = null;
 
+
 #[MongoDB\ReferenceOne(targetDocument: Client::class)]
 
 private ?Client $client = null;
 #[MongoDB\Field(type: "int", nullable: true)]
 private ?int $autoIncrementId = null;
-#[MongoDB\Field(type: "int", nullable: true)]
-private ?int $pinCode = null;
 
-public function getPinCode(): ?int
+#[MongoDB\Field(type: "date", nullable: true)]
+private ?\DateTimeInterface $resetRequestedAt = null;
+
+public function getResetRequestedAt(): ?\DateTimeInterface
 {
-    return $this->pinCode;
+    return $this->resetRequestedAt;
 }
-
-public function setPinCode(?int $pinCode): self
+public function setResetRequestedAt(?\DateTimeInterface $date): self
 {
-    $this->pinCode = $pinCode;
+    $this->resetRequestedAt = $date;
     return $this;
 }
+
+
 public function getAutoIncrementId(): ?int
 {
     return $this->autoIncrementId;
@@ -88,27 +91,6 @@ public function setClient(?Client $client): self
     public function setResetCode(?string $resetCode): self
     {
         $this->resetCode = $resetCode;
-        return $this;
-    }
-    public function getSecurityQuestion(): ?string
-    {
-        return $this->securityQuestion;
-    }
-
-    public function setSecurityQuestion(?string $securityQuestion): self
-    {
-        $this->securityQuestion = $securityQuestion;
-        return $this;
-    }
-
-    public function getSecurityAnswer(): ?string
-    {
-        return $this->securityAnswer;
-    }
-
-    public function setSecurityAnswer(?string $securityAnswer): self
-    {
-        $this->securityAnswer = $securityAnswer;
         return $this;
     }
     private ?string $resetToken = null;
@@ -197,5 +179,15 @@ public function setClient(?Client $client): self
     public function getUserIdentifier(): string
     {
         return $this->email; // Utilisez l'email comme identifiant unique
+    }
+    public function getUsername(): ?string
+    {
+        return $this->username ?? $this->email; // Retourne l'email si le username est null
+    }
+
+    public function setUsername(?string $username): self
+    {
+        $this->username = $username;
+        return $this;
     }
 }
